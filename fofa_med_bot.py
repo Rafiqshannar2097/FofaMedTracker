@@ -93,9 +93,9 @@ async def repeat_reminder_task(context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"⚠️ **تذكير عاجل ومهم!**\n\n"
-             f"حان الآن موعد تناول دواء: **{med_name}**.\n\n"
-             f"📸 لن يتوقف التذكير حتى تقوم بتصوير حبة الدواء وإرسال الصورة هنا الآن!"
+        text=f"⚠️ فوفاااا عالسريععع صار وقت الدوا!\n\n"
+             f"يلا فوفا عندك هاد الدوا : {med_name}.\n\n"
+             f"📸 ما رح يوقف التذكير لحتى تصوري حبة الدوا وتبعتيها لهون هلق, يلا يا قلبي!"
     )
 
 async def trigger_daily_reminder(context: ContextTypes.DEFAULT_TYPE):
@@ -158,7 +158,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     med_name = user_state.get("active_medicine", "الدواء")
     user_name = update.effective_user.first_name or "المريض"
 
-    await update.message.reply_text("⏳ جاري فحص الصورة للتحقق من الدواء...")
+    await update.message.reply_text("⏳ استني شوي بس عم اتحقق من الدواء...")
 
     photo = update.message.photo[-1]
     photo_file = await photo.get_file()
@@ -194,7 +194,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.application.user_data[chat_id]["waiting_for_photo"] = False
 
             # 3. إبلاغ المريض
-            await update.message.reply_text("✅ ممتاز! تم التأكد من صورة الدواء وإيقاف المنبه. بالشفاء والعافية!")
+            await update.message.reply_text("🩷 مشي الحال فوفا! تأكدت من صورة الدوا ووقفت المنبه. بالعافية يا روحي!")
 
             # 4. إرسال إشعار ونسخة من الصورة للمراقب
             if SUPERVISOR_CHAT_ID:
@@ -212,7 +212,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"فشل إرسال الإشعار للمراقب: {e}")
 
         else:
-            await update.message.reply_text("❌ لم أتمكن من التعرف على دواء في هذه الصورة. يرجى تصوير الدواء بوضوح لإيقاف التذكير!")
+            await update.message.reply_text("❌ ما قدرت اتعرف على الدوا بهي الصورة. لا تزوغلي. صوري الدوا منيح لوقف التذكير!")
 
     finally:
         if os.path.exists(file_path):
@@ -238,9 +238,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_med_job(context.job_queue, chat_id, med_name, reminder_time)
     
     await update.message.reply_text(
-        "أهلاً بك! تم تفعيل جدول أوديتك اليومية تلقائياً. 💊\n\n"
-        "سأقوم بتذكيرك في المواعيد المحددة تماماً بتوقيت الأردن، ولن يتوقف التذكير حتى ترسل صورة الحبة لكل موعد.\n\n"
-        "استخدم الأمر `/my_meds` لرؤية قائمة أوديتك ومواعيدها."
+        "كيفك فوفا! اًنا هون لساعدك تاخدي ادويتك بمواعيدها. 💊\n\n"
+        "رح ذكرك بالمواعيد المحددة ، وما رح يوقف التذكير حتى ترسلي صورة الحبة لكل موعد.\n\n"
+        "اكبسي هون  `/my_meds` لتشوفي قائمة أوديتك ومواعيدها."
     )
 
 async def list_meds_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -255,9 +255,9 @@ async def list_meds_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لا يوجد أدوية مسجلة حالياً.")
         return
 
-    msg = "📋 **جدول أوديتك المسجلة اليومية (توقيت الأردن):**\n\n"
+    msg = "📋هي أوديتك يا روحي :\n\n"
     for name, time_val in rows:
-        msg += f"• **{name}** ⬅️ الساعة: {time_val}\n"
+        msg += f"• {name} ⬅️ الساعة: {time_val}\n"
     
     await update.message.reply_text(msg)
 
@@ -284,5 +284,5 @@ if __name__ == '__main__':
 
     restore_scheduled_jobs(app.job_queue)
 
-    print("البوت يعمل ومستعد لتذكير المريض بمواعيد الأردن...")
+    print("البوت يعمل ومستعد لتذكير المريض...")
     app.run_polling()
