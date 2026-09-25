@@ -15,17 +15,13 @@ from google import genai
 # ==========================================
 # ⚙️ الإعدادات والمفاتيح الأساسية
 # ==========================================
-# ضع التوكن الذي أخذته من BotFather بين علامتي التنصيص
 TELEGRAM_TOKEN = "8408474332:AAEj4SrZUd4621fF2MoOhqaCdYPgJGM7JXo"
-
-# ضع مفتاح Gemini API هنا بين علامتي التنصيص
 GEMINI_API_KEY = "AQ.Ab8RN6KOOAYSYeSWHNiQ0coeB6klpWeUsrKRJPOcefN7GhBblw"
-
-# ضع رقم Chat ID الخاص بك كمراقب بدون علامات تنصيص (مثال: 123456789)
 SUPERVISOR_CHAT_ID = 1454870918
 
 DB_NAME = "medications.db"
-TIMEZONE = pytz.timezone("Asia/Damascus")  # المنطقة الزمنية (سورية/دمشق)
+# تعديل المنطقة الزمنية لتكون بتوقيت الأردن (عمان / الزرقاء)
+TIMEZONE = pytz.timezone("Asia/Amman")
 
 # إعداد عميل Gemini للذكاء الاصطناعي
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -64,7 +60,6 @@ def add_predefined_meds(patient_chat_id: int):
     cursor = conn.cursor()
     
     for med_name, time_str in default_meds:
-        # التأكد من عدم تكرار إضافة نفس الدواء والموعد للمريض
         cursor.execute(
             "SELECT id FROM medications WHERE chat_id = ? AND medicine_name = ? AND reminder_time = ?",
             (patient_chat_id, med_name, time_str)
@@ -91,7 +86,7 @@ def get_all_medications():
 # ⏰ نظام التذكير والجدولة المتكررة
 # ==========================================
 async def repeat_reminder_task(context: ContextTypes.DEFAULT_TYPE):
-    """دالة تتكرر كل 3 دقائق لتنبيه المريض"""
+    """دالة تتكرر كل 30 ثانية لتنبيه المريض"""
     job_data = context.job.data
     chat_id = job_data["chat_id"]
     med_name = job_data["medicine_name"]
@@ -99,7 +94,7 @@ async def repeat_reminder_task(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=chat_id,
         text=f"⚠️ **تذكير عاجل ومهم!**\n\n"
-             f"حان الان موعد تناول دواء: **{med_name}**.\n\n"
+             f"حان الآن موعد تناول دواء: **{med_name}**.\n\n"
              f"📸 لن يتوقف التذكير حتى تقوم بتصوير حبة الدواء وإرسال الصورة هنا الآن!"
     )
 
@@ -115,25 +110,38 @@ async def trigger_daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         "active_medicine": med_name
     }
 
-    # بدء التذكير المتكرر كل 3 دقائق (180 ثانية)
+    # إلغاء أي تنبيهات نشطة قديمة لنفس المريض لمنع التداخل
+    active_jobs = context.job_queue.get_jobs_by_name(f"active_alert_{chat_id}")
+    for job in active_jobs:
+        job.schedule_removal()
+
+    # بدء التذكير المتكرر كل 30 ثانية (interval=30)
     context.job_queue.run_repeating(
         repeat_reminder_task,
-        interval=180,
+        interval=30,
         first=0,
         data={"chat_id": chat_id, "medicine_name": med_name},
         name=f"active_alert_{chat_id}"
     )
 
 def schedule_med_job(job_queue, chat_id: int, med_name: str, reminder_time_str: str):
-    """جدولة موعد يومي في النظام"""
-    time_obj = datetime.datetime.strptime(reminder_time_str, "%H:%M").time()
+    """جدولة موعد يومي مع ربط التوقيت بمنطقة الأردن لتفادي اختلاف توقيت السيرفر"""
+    job_name = f"daily_{chat_id}_{med_name}_{reminder_time_str}"
+    
+    # تفادي إضافة الوظيفة ذاتها إذا كانت مجدولة مسبقاً
+    if job_queue.get_jobs_by_name(job_name):
+        return
+
+    # إسناد التوقيت المحلي للأردن بشكل صريح لـ time_obj
+    naive_time = datetime.datetime.strptime(reminder_time_str, "%H:%M").time()
+    time_with_tz = naive_time.replace(tzinfo=TIMEZONE)
     
     job_queue.run_daily(
         trigger_daily_reminder,
-        time=time_obj,
+        time=time_with_tz,
         days=(0, 1, 2, 3, 4, 5, 6),
         data={"chat_id": chat_id, "medicine_name": med_name},
-        name=f"daily_{chat_id}_{med_name}_{reminder_time_str}"
+        name=job_name
     )
 
 # ==========================================
@@ -197,7 +205,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         photo=photo.file_id,
                         caption=f"🔔 **إشعار مراقبة الأدوية:**\n\n"
                                 f"قام المريض **{user_name}** بتناول دواء: **{med_name}** "
-                                f"في الساعة {current_time_str}.\n"
+                                f"في الساعة {current_time_str} (توقيت الأردن).\n"
                                 f"تم التأكد من صورة الحبة بنجاح."
                     )
                 except Exception as e:
@@ -219,12 +227,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # إضافة المواعيد المجهزة تلقائياً
     add_predefined_meds(chat_id)
     
-    # إعادة تحميل الجداول في النظام
-    restore_scheduled_jobs(context.job_queue)
+    # جدولة المواعيد الخاصة بهذا المريض
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT medicine_name, reminder_time FROM medications WHERE chat_id = ?", (chat_id,))
+    user_meds = cursor.fetchall()
+    conn.close()
+
+    for med_name, reminder_time in user_meds:
+        schedule_med_job(context.job_queue, chat_id, med_name, reminder_time)
     
     await update.message.reply_text(
         "أهلاً بك! تم تفعيل جدول أوديتك اليومية تلقائياً. 💊\n\n"
-        "سأقوم بتذكيرك في المواعيد المحددة تماماً، ولن يتوقف التذكير حتى ترسل صورة الحبة لكل موعد.\n\n"
+        "سأقوم بتذكيرك في المواعيد المحددة تماماً بتوقيت الأردن، ولن يتوقف التذكير حتى ترسل صورة الحبة لكل موعد.\n\n"
         "استخدم الأمر `/my_meds` لرؤية قائمة أوديتك ومواعيدها."
     )
 
@@ -240,7 +255,7 @@ async def list_meds_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لا يوجد أدوية مسجلة حالياً.")
         return
 
-    msg = "📋 **جدول أوديتك المسجلة اليومية:**\n\n"
+    msg = "📋 **جدول أوديتك المسجلة اليومية (توقيت الأردن):**\n\n"
     for name, time_val in rows:
         msg += f"• **{name}** ⬅️ الساعة: {time_val}\n"
     
@@ -269,5 +284,5 @@ if __name__ == '__main__':
 
     restore_scheduled_jobs(app.job_queue)
 
-    print("البوت يعمل ومستعد لتذكير المريض بالمواعيد...")
+    print("البوت يعمل ومستعد لتذكير المريض بمواعيد الأردن...")
     app.run_polling()
